@@ -2,7 +2,7 @@ import sys
 import os
 
 try:
-    # Windows implementation
+    # Windows
     import msvcrt
     def get_input():
         res = None
@@ -21,45 +21,46 @@ try:
                     res = ch.decode('utf-8', 'ignore').lower()
                 except: pass
         return res
-        
+
 except ImportError:
-    # Unix/Linux/MacOS implementation
-    import select
+    # macOS / Linux
     import tty
     import termios
+    import fcntl
+    import time
     
     def get_input():
         fd = sys.stdin.fileno()
         old_settings = termios.tcgetattr(fd)
+        
+        # Отримуємо поточні прапорці файлового дескриптора
+        old_flags = fcntl.fcntl(fd, fcntl.F_GETFL)
+        
         res = None
         try:
-            # Використовуємо setraw замість setcbreak.
-            # Це гарантує, що macOS віддаватиме натискання миттєво без жодної буферизації.
+            # Переводимо термінал у сирий режим
             tty.setraw(fd)
+            # Встановлюємо неблокуючий режим читання (O_NONBLOCK)
+            fcntl.fcntl(fd, fcntl.F_SETFL, old_flags | os.O_NONBLOCK)
             
             while True:
-                # Слухаємо безпосередньо системний дескриптор, ігноруючи буфер Python
-                r, w, x = select.select([fd], [], [], 0)
-                if r:
+                try:
                     ch = os.read(fd, 1)
                     
-                    if ch == b'\x03': 
-                        # В setraw режим Ctrl+C не генерує сигнал SIGINT, а просто шле байт \x03.
-                        # Ми перехоплюємо його вручну, щоб гра могла коректно закритися.
+                    if ch == b'\x03':  # Ctrl+C
                         raise KeyboardInterrupt
-                        
-                    elif ch == b'\x1b':
-                        # Обробка Escape-послідовностей (стрілочки)
-                        r2, _, _ = select.select([fd], [], [], 0.02)
-                        if r2:
+                    elif ch == b'\x1b':  # Стрілочки (Escape-послідовність)
+                        time.sleep(0.01) # Мікропауза, щоб буфер встиг наповнитися
+                        try:
                             if os.read(fd, 1) == b'[':
-                                r3, _, _ = select.select([fd], [], [], 0.02)
-                                if r3:
-                                    seq = os.read(fd, 1)
-                                    if seq == b'A': res = 'up'
-                                    elif seq == b'B': res = 'down'
-                                    elif seq == b'C': res = 'right'
-                                    elif seq == b'D': res = 'left'
+                                time.sleep(0.01)
+                                seq = os.read(fd, 1)
+                                if seq == b'A': res = 'up'
+                                elif seq == b'B': res = 'down'
+                                elif seq == b'C': res = 'right'
+                                elif seq == b'D': res = 'left'
+                        except BlockingIOError:
+                            pass
                     elif ch in (b'\n', b'\r'):
                         res = 'enter'
                     else:
@@ -67,10 +68,13 @@ except ImportError:
                             res = ch.decode('utf-8').lower()
                         except UnicodeDecodeError:
                             pass
-                else:
-                    break # Буфер клавіатури порожній, виходимо з циклу
+                except BlockingIOError:
+                    # У неблокуючому режимі помилка BlockingIOError означає "немає нових натискань"
+                    break
+                    
         finally:
-            # ЗАВЖДИ повертаємо термінал у нормальний стан
+            # Повертаємо все як було
             termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+            fcntl.fcntl(fd, fcntl.F_SETFL, old_flags)
             
         return res
