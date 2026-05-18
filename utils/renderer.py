@@ -9,7 +9,7 @@ class Renderer:
         self.first_render = True
 
     def clear(self):
-        # \033[?25h - повертає курсор перед повним очищенням
+        # Повертаємо курсор і повністю чистимо термінал
         sys.stdout.write('\033[?25h')
         sys.stdout.flush()
         os.system('cls' if os.name == 'nt' else 'clear')
@@ -20,15 +20,13 @@ class Renderer:
             self.clear()
             self.first_render = False
         
-        # \033[?25l - ховає курсор (щоб не блимав під час гри)
-        # \033[H - повертає невидимий курсор у верхній лівий кут
+        # \033[?25l - ховаємо курсор
+        # \033[H - повертаємо невидимий курсор у верхній лівий кут (колонку 0, рядок 0)
         sys.stdout.write('\033[?25l\033[H')
         
-        # \033[K очищає залишки попереднього кадру до кінця рядка
-        output = "\n".join([line + "\033[K" for line in frame_lines])
+        # ВАЖЛИВИЙ ФІКС: міняємо "\n" на "\r\n" для усунення ефекту сходинок у сирому режимі UNIX
+        output = "\r\n".join([line + "\033[K" for line in frame_lines])
         
-        # \033[J очищає все сміття під кадром
-        # ВАЖЛИВО: Тут більше немає "\n" в кінці, тому термінал НІКОЛИ не скролиться вниз!
         sys.stdout.write(output + "\033[J")
         sys.stdout.flush()
 
@@ -57,9 +55,11 @@ class Renderer:
 
         self._draw_box(grid, game_map.width, frame)
         
-        frame.append("\nУправління: [WASD] Рух | [Стрілочки] Поворот | [ПРОБІЛ] Постріл | [Q] Меню")
+        frame.append("")
+        frame.append("Управління: [WASD] Рух | [Стрілочки] Поворот | [ПРОБІЛ] Постріл | [Q] Меню")
         if message: 
-            frame.append(f"\n{c.RED}>>> {message} <<<{c.RESET}")
+            frame.append("")
+            frame.append(f"{c.RED}>>> {message} <<<{c.RESET}")
             
         self._render_frame(frame)
 
@@ -169,7 +169,8 @@ class Renderer:
 
         self._draw_box(render_grid, width, frame)
         
-        frame.append("\n[Стрілочки] Рух | [W] Стіна | [E] Ворог | [R] Гравець | [Пробіл] Стерти")
+        frame.append("")
+        frame.append("[Стрілочки] Рух | [W] Стіна | [E] Ворог | [R] Гравець | [Пробіл] Стерти")
         frame.append("[Enter] Зберегти | [Q] Вихід/Скасувати")
         
         self._render_frame(frame)
