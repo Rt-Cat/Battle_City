@@ -10,6 +10,8 @@ class MapEditor:
     def __init__(self, existing_level_idx=None):
         self.renderer = Renderer()
         self.existing_level_idx = existing_level_idx
+        self.valid = True # Прапорець перевірки, чи не було скасовано створення карти
+        self.running = True
         
         if existing_level_idx is not None:
             level = MapManager.get_level(existing_level_idx)
@@ -25,48 +27,72 @@ class MapEditor:
         else:
             self._prompt_setup()
 
-        self.cursor_x = self.width // 2
-        self.cursor_y = self.height // 2
-        self.running = True
+        if self.valid:
+            self.cursor_x = self.width // 2
+            self.cursor_y = self.height // 2
 
     def _prompt_setup(self):
-        # Тимчасово вимикаємо сирий режим, щоб працювали стандартні print() та input()
+        # Вимикаємо сирий режим для безпечного введення тексту через стандартний input()
         stop_listening()
         
-        # Повертаємо текстовий курсор для зручності введення
+        # Повертаємо видимість системного курсора на час введення букв
         sys.stdout.write('\033[?25h')
         sys.stdout.flush()
         
         os.system('cls' if os.name == 'nt' else 'clear')
         print("=== СТВОРЕННЯ НОВОЇ КАРТИ ===")
+        print("(Введіть 'q' у будь-якому полі для скасування виходу в меню)\n")
         
         existing_levels = MapManager.get_all_levels()
         existing_names = [level['name'].lower() for level in existing_levels]
         
+        # 1. Запит імені карти
         while True:
             name_input = input("Введіть назву карти: ").strip()
+            if name_input.lower() == 'q':
+                self.valid = False
+                self.running = False
+                return
+                
             self.name = name_input if name_input else "Unnamed Map"
-            
             if self.name.lower() in existing_names:
                 print(f"Помилка: Карта з назвою '{self.name}' вже існує!")
             else:
                 break
         
+        # 2. Запит розмірів карти
         try:
-            w = int(input("Ширина (макс 40): "))
+            w_input = input("Ширина (макс 40): ").strip()
+            if w_input.lower() == 'q':
+                self.valid = False
+                self.running = False
+                return
+            w = int(w_input)
             self.width = max(5, min(40, w))
-            h = int(input("Висота (макс 40): "))
+            
+            h_input = input("Висота (макс 40): ").strip()
+            if h_input.lower() == 'q':
+                self.valid = False
+                self.running = False
+                return
+            h = int(h_input)
             self.height = max(5, min(40, h))
+            
         except ValueError:
+            # Якщо ввели не число і не 'q' — ставимо стандартний безпечний розмір
             self.width, self.height = 20, 15
             
         self.grid = [[' ' for _ in range(self.width)] for _ in range(self.height)]
         
-        # Вмикаємо сирий режим та фоновий потік назад перед стартом редактора
+        # Повертаємо ігровий сирий режим назад
         start_listening()
 
     def run(self):
-        get_input()  # Очистка буфера
+        # Якщо користувач скасував створення карти на етапі prompt_setup
+        if not self.valid:
+            return
+            
+        get_input()  # Очистка буфера клавіатури перед стартом
         while self.running:
             self.renderer.render_editor(self.grid, self.cursor_x, self.cursor_y, self.name)
             key = get_input()
@@ -95,52 +121,36 @@ class MapEditor:
             time.sleep(0.05)
 
     def _handle_quit_prompt(self):
-        # На час текстового вікна підтвердження знову вимикаємо сирий режим
-        stop_listening()
-        sys.stdout.write('\033[?25h')
-        sys.stdout.flush()
+        """Нове інтерактивне меню закриття, яке реагує на поодинокі клавіші миттєво."""
+        get_input() # Очищаємо хвіст натискань
         
         while True:
-            os.system('cls' if os.name == 'nt' else 'clear')
-            print("Ви дійсно хочете вийти?")
-            print("[S] Save (Зберегти)")
-            print("[D] Destroy (Скасувати)")
-            k = input("Ваш вибір: ").strip().lower()
-            if k == 's':
+            # Збираємо кадр за допомогою системи захисту від мерехтіння
+            frame = []
+            frame.append("=== ВИХІД З РЕДАКТОРА ===")
+            frame.append("")
+            frame.append("Ви дійсно хочете вийти?")
+            frame.append("")
+            frame.append(f"  > [{c.GREEN}S{c.RESET}] Save (Зберегти карту та вийти)")
+            frame.append(f"  > [{c.RED}D{c.RESET}] Destroy (Скасувати всі зміни)")
+            frame.append("  > [Q] Повернутися назад до редагування")
+            frame.append("")
+            
+            self.renderer._render_frame(frame)
+            
+            key = get_input()
+            if key == 's':
                 self._save_map()
                 self.running = False
                 break
-            elif k == 'd':
+            elif key == 'd':
                 self.running = False
                 break
-        
-        start_listening()
-
-    def _save_map(self):
-        player_start = None 
-        enemy_spawns = []
-        layout = []
-        
-        for y in range(self.height):
-            row_str = ""
-            for x in range(self.width):
-                char = self.grid[y][x]
-                if char == 'R':
-                    player_start = {"x": x, "y": y}
-                    row_str += " "
-                elif char == 'E':
-                    enemy_spawns.append({"x": x, "y": y})
-                    row_str += " "
-                else:
-                    row_str += char
-            layout.append(row_str)
-
-        level_data = {
-            "name": self.name,
-            "width": self.width,
-            "height": self.height,
-            "layout": layout,
-            "player_start": player_start,
-            "enemy_spawns": enemy_spawns
-        }
-        MapManager.save_level(level_data, self.existing_level_idx)
+            elif key == 'q':
+                # Просто повертаємось у редактор до малювання сітки
+                break
+                
+            time.sleep(0.05)
+            
+        # Якщо користувач обрав повернутися ('q'), моментально перемальовуємо редактор,
+        # щоб не залишалося
