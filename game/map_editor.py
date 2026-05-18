@@ -153,4 +153,35 @@ class MapEditor:
             time.sleep(0.05)
             
         # Якщо користувач обрав повернутися ('q'), моментально перемальовуємо редактор,
-        # щоб не залишалося
+        # щоб не залишалося візуальних слідів меню виходу
+        if self.running:
+            self.renderer.render_editor(self.grid, self.cursor_x, self.cursor_y, self.name)
+
+    def _save_map(self):
+        player_start = None 
+        enemy_spawns = []
+        layout = []
+        
+        for y in range(self.height):
+            row_str = ""
+            for x in range(self.width):
+                char = self.grid[y][x]
+                if char == 'R':
+                    player_start = {"x": x, "y": y}
+                    row_str += " "
+                elif char == 'E':
+                    enemy_spawns.append({"x": x, "y": y})
+                    row_str += " "
+                else:
+                    row_str += char
+            layout.append(row_str)
+
+        level_data = {
+            "name": self.name,
+            "width": self.width,
+            "height": self.height,
+            "layout": layout,
+            "player_start": player_start,
+            "enemy_spawns": enemy_spawns
+        }
+        MapManager.save_level(level_data, self.existing_level_idx)
