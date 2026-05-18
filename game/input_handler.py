@@ -2,6 +2,7 @@ import sys
 import os
 
 try:
+    # Windows implementation
     import msvcrt
     def get_input():
         res = None
@@ -20,35 +21,45 @@ try:
                     res = ch.decode('utf-8', 'ignore').lower()
                 except: pass
         return res
+        
 except ImportError:
+    # Unix/Linux/MacOS implementation
     import select
     import tty
     import termios
+    
     def get_input():
         fd = sys.stdin.fileno()
         old_settings = termios.tcgetattr(fd)
         res = None
         try:
-            tty.setraw(fd)
+            # setcbreak краще підходить для macOS, ніж setraw (і не ламає Ctrl+C)
+            tty.setcbreak(fd)
             while True:
                 i, _, _ = select.select([fd], [], [], 0)
                 if i:
-                    ch = sys.stdin.read(1)
-                    if ch == '\x1b':
-                        i2, _, _ = select.select([fd], [], [], 0.01)
-                        if i2 and sys.stdin.read(1) == '[':
-                            i3, _, _ = select.select([fd], [], [], 0.01)
+                    # Читаємо сирі байти через os.read, щоб обійти блокування буфера sys.stdin
+                    ch = os.read(fd, 1)
+                    if ch == b'\x1b':
+                        # Збільшений таймаут до 0.02 для обробки стрілочок на маках
+                        i2, _, _ = select.select([fd], [], [], 0.02)
+                        if i2 and os.read(fd, 1) == b'[':
+                            i3, _, _ = select.select([fd], [], [], 0.02)
                             if i3:
-                                seq = sys.stdin.read(1)
-                                if seq == 'A': res = 'up'
-                                elif seq == 'B': res = 'down'
-                                elif seq == 'D': res = 'left'
-                                elif seq == 'C': res = 'right'
-                    elif ch in ('\n', '\r'):
+                                seq = os.read(fd, 1)
+                                if seq == b'A': res = 'up'
+                                elif seq == b'B': res = 'down'
+                                elif seq == b'D': res = 'left'
+                                elif seq == b'C': res = 'right'
+                    elif ch in (b'\n', b'\r'):
                         res = 'enter'
                     else:
-                        res = ch.lower()
-                else: break
+                        try:
+                            res = ch.decode('utf-8').lower()
+                        except UnicodeDecodeError:
+                            pass
+                else:
+                    break
         finally:
             termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
         return res
