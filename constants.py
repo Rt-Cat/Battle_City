@@ -1,0 +1,20 @@
+RESET = "\033[0m"
+RED = "\033[91m"
+GREEN = "\033[92m"
+YELLOW = "\033[93m"
+CYAN = "\033[96m"
+MAGENTA = "\033[95m"
+BG_WHITE = "\033[47m"
+TEXT_BLACK = "\033[30m"
+
+EMPTY = " "
+WALL = YELLOW + "#" + RESET
+EXPLOSION = RED + "X" + RESET
+
+PLAYER_BULLET = CYAN + "o" + RESET
+ENEMY_BULLET = MAGENTA + "*" + RESET
+
+ARROWS = {'w': '^', 's': 'v', 'a': '<', 'd': '>'}
+CURSOR = BG_WHITE + TEXT_BLACK + "C" + RESET
+
+FPS = 0.1
