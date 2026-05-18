@@ -33,24 +33,33 @@ except ImportError:
         old_settings = termios.tcgetattr(fd)
         res = None
         try:
-            # setcbreak краще підходить для macOS, ніж setraw (і не ламає Ctrl+C)
-            tty.setcbreak(fd)
+            # Використовуємо setraw замість setcbreak.
+            # Це гарантує, що macOS віддаватиме натискання миттєво без жодної буферизації.
+            tty.setraw(fd)
+            
             while True:
-                i, _, _ = select.select([fd], [], [], 0)
-                if i:
-                    # Читаємо сирі байти через os.read, щоб обійти блокування буфера sys.stdin
+                # Слухаємо безпосередньо системний дескриптор, ігноруючи буфер Python
+                r, w, x = select.select([fd], [], [], 0)
+                if r:
                     ch = os.read(fd, 1)
-                    if ch == b'\x1b':
-                        # Збільшений таймаут до 0.02 для обробки стрілочок на маках
-                        i2, _, _ = select.select([fd], [], [], 0.02)
-                        if i2 and os.read(fd, 1) == b'[':
-                            i3, _, _ = select.select([fd], [], [], 0.02)
-                            if i3:
-                                seq = os.read(fd, 1)
-                                if seq == b'A': res = 'up'
-                                elif seq == b'B': res = 'down'
-                                elif seq == b'D': res = 'left'
-                                elif seq == b'C': res = 'right'
+                    
+                    if ch == b'\x03': 
+                        # В setraw режим Ctrl+C не генерує сигнал SIGINT, а просто шле байт \x03.
+                        # Ми перехоплюємо його вручну, щоб гра могла коректно закритися.
+                        raise KeyboardInterrupt
+                        
+                    elif ch == b'\x1b':
+                        # Обробка Escape-послідовностей (стрілочки)
+                        r2, _, _ = select.select([fd], [], [], 0.02)
+                        if r2:
+                            if os.read(fd, 1) == b'[':
+                                r3, _, _ = select.select([fd], [], [], 0.02)
+                                if r3:
+                                    seq = os.read(fd, 1)
+                                    if seq == b'A': res = 'up'
+                                    elif seq == b'B': res = 'down'
+                                    elif seq == b'C': res = 'right'
+                                    elif seq == b'D': res = 'left'
                     elif ch in (b'\n', b'\r'):
                         res = 'enter'
                     else:
@@ -59,7 +68,9 @@ except ImportError:
                         except UnicodeDecodeError:
                             pass
                 else:
-                    break
+                    break # Буфер клавіатури порожній, виходимо з циклу
         finally:
+            # ЗАВЖДИ повертаємо термінал у нормальний стан
             termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+            
         return res
