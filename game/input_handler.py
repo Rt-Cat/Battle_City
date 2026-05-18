@@ -29,93 +29,72 @@ try:
 
 except ImportError:
     # ==========================================
-    # РЕАЛІЗАЦІЯ ДЛЯ MACOS / LINUX (ФІКС БЛОКУВАННЯ)
+    # РЕАЛІЗАЦІЯ ДЛЯ MACOS / LINUX
     # ==========================================
     import select
     import tty
     import termios
-    import threading
-    import queue
-    import time
     import atexit
 
-    _input_queue = queue.Queue()
-    _initialized = False
     _old_settings = None
-
-    def _background_listener(fd):
-        """Фоновий потік безпечно опитує дескриптор через select, не ламаючи stdout."""
-        global _initialized
-        
-        while _initialized:
-            # Використовуємо select з таймаутом 0.05 сек.
-            # Це дозволяє потоку не блокувати термінал намертво і реагувати на закриття програми
-            r, _, _ = select.select([fd], [], [], 0.05)
-            if r:
-                try:
-                    ch = os.read(fd, 1)
-                    if not ch: continue
-                    
-                    if ch == b'\x03':  # Ctrl+C
-                        _input_queue.put('ctrl_c')
-                        break
-                        
-                    elif ch == b'\x1b':  # Escape-послідовність (Стрілочки)
-                        # Перевіряємо, чи летять наступні байти структури
-                        r2, _, _ = select.select([fd], [], [], 0.02)
-                        if r2 and os.read(fd, 1) == b'[':
-                            r3, _, _ = select.select([fd], [], [], 0.02)
-                            if r3:
-                                seq = os.read(fd, 1)
-                                if seq == b'A': _input_queue.put('up')
-                                elif seq == b'B': _input_queue.put('down')
-                                elif seq == b'C': _input_queue.put('right')
-                                elif seq == b'D': _input_queue.put('left')
-                                
-                    elif ch in (b'\n', b'\r'):
-                        _input_queue.put('enter')
-                    else:
-                        try:
-                            _input_queue.put(ch.decode('utf-8').lower())
-                        except UnicodeDecodeError:
-                            pass
-                except Exception:
-                    pass
+    _initialized = False
 
     def start_listening():
         global _initialized, _old_settings
         if _initialized: return
-        
         fd = sys.stdin.fileno()
         _old_settings = termios.tcgetattr(fd)
         
-        # Переводимо в сирий режим, але НЕ чіпаємо fcntl O_NONBLOCK!
-        tty.setraw(fd)
+        # tty.setcbreak ідеальний для macOS: він прибирає буферизацію рядків,
+        # але залишає stdout повністю робочим і не блокує екран
+        tty.setcbreak(fd)
         _initialized = True
-        
-        t = threading.Thread(target=_background_listener, args=(fd,), daemon=True)
-        t.start()
 
     def stop_listening():
         global _initialized, _old_settings
         if not _initialized: return
         _initialized = False
-        
         fd = sys.stdin.fileno()
         if _old_settings:
             termios.tcsetattr(fd, termios.TCSADRAIN, _old_settings)
 
+    # Гарантоване відновлення терміналу при закритті програми
     atexit.register(stop_listening)
 
     def get_input():
         global _initialized
         if not _initialized:
             start_listening()
-            
+
+        fd = sys.stdin.fileno()
         res = None
-        while not _input_queue.empty():
-            item = _input_queue.get_nowait()
-            if item == 'ctrl_c':
-                raise KeyboardInterrupt
-            res = item
+
+        # Вичитуємо абсолютно всі натиснуті клавіші з буфера за цей тік (запобігає лагам)
+        while True:
+            # Перевіряємо наявність символу з таймаутом 0 (миттєвий неблокуючий запит)
+            r, _, _ = select.select([fd], [], [], 0)
+            if not r:
+                break  # Клавіш у буфері більше немає
+            
+            ch = os.read(fd, 1)
+            
+            if ch == b'\x1b':  # Початок керуючої послідовності (Стрілочки)
+                # Робимо мікроскопічну перевірку на наступні байти
+                r2, _, _ = select.select([fd], [], [], 0.03)
+                if r2 and os.read(fd, 1) == b'[':
+                    r3, _, _ = select.select([fd], [], [], 0.03)
+                    if r3:
+                        seq = os.read(fd, 1)
+                        if seq == b'A': res = 'up'
+                        elif seq == b'B': res = 'down'
+                        elif seq == b'C': res = 'right'
+                        elif seq == b'D': res = 'left'
+            elif ch in (b'\n', b'\r'):
+                res = 'enter'
+            else:
+                try:
+                    res = ch.decode('utf-8').lower()
+                except UnicodeDecodeError:
+                    pass
+                    
         return res
