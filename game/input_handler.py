@@ -3,7 +3,7 @@ import os
 
 try:
     # ==========================================
-    # РЕАЛІЗАЦІЯ ДЛЯ WINDOWS
+    # РЕАЛІЗАЦІЯ ДЛЯ WINDOWS (Без змін)
     # ==========================================
     import msvcrt
     def get_input():
@@ -29,11 +29,11 @@ try:
 
 except ImportError:
     # ==========================================
-    # РЕАЛІЗАЦІЯ ДЛЯ MACOS / LINUX
+    # РЕАЛІЗАЦІЯ ДЛЯ MACOS / LINUX (ФІКС БЛОКУВАННЯ)
     # ==========================================
+    import select
     import tty
     import termios
-    import fcntl
     import threading
     import queue
     import time
@@ -42,58 +42,68 @@ except ImportError:
     _input_queue = queue.Queue()
     _initialized = False
     _old_settings = None
-    _old_flags = None
 
     def _background_listener(fd):
+        """Фоновий потік безпечно опитує дескриптор через select, не ламаючи stdout."""
         global _initialized
-        buffer = b''
         
         while _initialized:
-            try:
-                ch = os.read(fd, 1)
-                if not ch: continue
-                if ch == b'\x03':
-                    _input_queue.put('ctrl_c')
-                    break
-                buffer += ch
-            except BlockingIOError:
-                if buffer:
-                    if buffer == b'\x1b[A': _input_queue.put('up')
-                    elif buffer == b'\x1b[B': _input_queue.put('down')
-                    elif buffer == b'\x1b[C': _input_queue.put('right')
-                    elif buffer == b'\x1b[D': _input_queue.put('left')
-                    elif buffer in (b'\n', b'\r'): _input_queue.put('enter')
-                    elif len(buffer) == 1:
-                        try: _input_queue.put(buffer.decode('utf-8').lower())
-                        except: pass
-                    buffer = b''
-                time.sleep(0.01)
+            # Використовуємо select з таймаутом 0.05 сек.
+            # Це дозволяє потоку не блокувати термінал намертво і реагувати на закриття програми
+            r, _, _ = select.select([fd], [], [], 0.05)
+            if r:
+                try:
+                    ch = os.read(fd, 1)
+                    if not ch: continue
+                    
+                    if ch == b'\x03':  # Ctrl+C
+                        _input_queue.put('ctrl_c')
+                        break
+                        
+                    elif ch == b'\x1b':  # Escape-послідовність (Стрілочки)
+                        # Перевіряємо, чи летять наступні байти структури
+                        r2, _, _ = select.select([fd], [], [], 0.02)
+                        if r2 and os.read(fd, 1) == b'[':
+                            r3, _, _ = select.select([fd], [], [], 0.02)
+                            if r3:
+                                seq = os.read(fd, 1)
+                                if seq == b'A': _input_queue.put('up')
+                                elif seq == b'B': _input_queue.put('down')
+                                elif seq == b'C': _input_queue.put('right')
+                                elif seq == b'D': _input_queue.put('left')
+                                
+                    elif ch in (b'\n', b'\r'):
+                        _input_queue.put('enter')
+                    else:
+                        try:
+                            _input_queue.put(ch.decode('utf-8').lower())
+                        except UnicodeDecodeError:
+                            pass
+                except Exception:
+                    pass
 
     def start_listening():
-        global _initialized, _old_settings, _old_flags
+        global _initialized, _old_settings
         if _initialized: return
         
         fd = sys.stdin.fileno()
         _old_settings = termios.tcgetattr(fd)
-        _old_flags = fcntl.fcntl(fd, fcntl.F_GETFL)
         
+        # Переводимо в сирий режим, але НЕ чіпаємо fcntl O_NONBLOCK!
         tty.setraw(fd)
-        fcntl.fcntl(fd, fcntl.F_SETFL, _old_flags | os.O_NONBLOCK)
         _initialized = True
         
         t = threading.Thread(target=_background_listener, args=(fd,), daemon=True)
         t.start()
 
     def stop_listening():
-        global _initialized, _old_settings, _old_flags
+        global _initialized, _old_settings
         if not _initialized: return
         _initialized = False
         
         fd = sys.stdin.fileno()
         if _old_settings:
             termios.tcsetattr(fd, termios.TCSADRAIN, _old_settings)
-        if _old_flags:
-            fcntl.fcntl(fd, fcntl.F_SETFL, _old_flags)
 
     atexit.register(stop_listening)
 
