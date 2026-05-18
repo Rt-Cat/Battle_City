@@ -1,7 +1,8 @@
 import time
 import os
+import sys
 import constants as c
-from game.input_handler import get_input
+from game.input_handler import get_input, start_listening, stop_listening
 from game.map_manager import MapManager
 from utils.renderer import Renderer
 
@@ -17,7 +18,6 @@ class MapEditor:
             self.height = level['height']
             self.grid = [list(row) for row in level['layout']]
             
-            # Відновлюємо сутності ТІЛЬКИ якщо вони існують
             if level.get('player_start'):
                 self.grid[level['player_start']['y']][level['player_start']['x']] = 'R'
             for e in level.get('enemy_spawns', []):
@@ -30,6 +30,13 @@ class MapEditor:
         self.running = True
 
     def _prompt_setup(self):
+        # Тимчасово вимикаємо сирий режим, щоб працювали стандартні print() та input()
+        stop_listening()
+        
+        # Повертаємо текстовий курсор для зручності введення
+        sys.stdout.write('\033[?25h')
+        sys.stdout.flush()
+        
         os.system('cls' if os.name == 'nt' else 'clear')
         print("=== СТВОРЕННЯ НОВОЇ КАРТИ ===")
         
@@ -41,7 +48,7 @@ class MapEditor:
             self.name = name_input if name_input else "Unnamed Map"
             
             if self.name.lower() in existing_names:
-                print(f"{c.RED}Помилка: Карта з назвою '{self.name}' вже існує!{c.RESET}")
+                print(f"Помилка: Карта з назвою '{self.name}' вже існує!")
             else:
                 break
         
@@ -54,9 +61,12 @@ class MapEditor:
             self.width, self.height = 20, 15
             
         self.grid = [[' ' for _ in range(self.width)] for _ in range(self.height)]
+        
+        # Вмикаємо сирий режим та фоновий потік назад перед стартом редактора
+        start_listening()
 
     def run(self):
-        get_input()
+        get_input()  # Очистка буфера
         while self.running:
             self.renderer.render_editor(self.grid, self.cursor_x, self.cursor_y, self.name)
             key = get_input()
@@ -85,12 +95,17 @@ class MapEditor:
             time.sleep(0.05)
 
     def _handle_quit_prompt(self):
+        # На час текстового вікна підтвердження знову вимикаємо сирий режим
+        stop_listening()
+        sys.stdout.write('\033[?25h')
+        sys.stdout.flush()
+        
         while True:
             os.system('cls' if os.name == 'nt' else 'clear')
             print("Ви дійсно хочете вийти?")
             print("[S] Save (Зберегти)")
             print("[D] Destroy (Скасувати)")
-            k = get_input()
+            k = input("Ваш вибір: ").strip().lower()
             if k == 's':
                 self._save_map()
                 self.running = False
@@ -98,10 +113,10 @@ class MapEditor:
             elif k == 'd':
                 self.running = False
                 break
-            time.sleep(0.1)
+        
+        start_listening()
 
     def _save_map(self):
-        # За замовчуванням гравця немає
         player_start = None 
         enemy_spawns = []
         layout = []

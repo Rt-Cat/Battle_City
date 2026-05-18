@@ -2,7 +2,9 @@ import sys
 import os
 
 try:
-    # Windows
+    # ==========================================
+    # РЕАЛІЗАЦІЯ ДЛЯ WINDOWS
+    # ==========================================
     import msvcrt
     def get_input():
         res = None
@@ -22,8 +24,13 @@ try:
                 except: pass
         return res
 
+    def start_listening(): pass
+    def stop_listening(): pass
+
 except ImportError:
-    # macOS / Linux
+    # ==========================================
+    # РЕАЛІЗАЦІЯ ДЛЯ MACOS / LINUX
+    # ==========================================
     import tty
     import termios
     import fcntl
@@ -38,25 +45,18 @@ except ImportError:
     _old_flags = None
 
     def _background_listener(fd):
-        """Фоновий потік, який безперервно і без блокувань зчитує байти з терміналу."""
         global _initialized
         buffer = b''
         
         while _initialized:
             try:
-                # Намагаємося зчитати 1 байт
                 ch = os.read(fd, 1)
-                if not ch:
-                    continue
-                
-                # Перехоплюємо Ctrl+C у сирому режимі
+                if not ch: continue
                 if ch == b'\x03':
                     _input_queue.put('ctrl_c')
                     break
-                
                 buffer += ch
             except BlockingIOError:
-                # Якщо зараз байтів немає, обробляємо те, що вже встигли накопичити в буфері
                 if buffer:
                     if buffer == b'\x1b[A': _input_queue.put('up')
                     elif buffer == b'\x1b[B': _input_queue.put('down')
@@ -64,14 +64,12 @@ except ImportError:
                     elif buffer == b'\x1b[D': _input_queue.put('left')
                     elif buffer in (b'\n', b'\r'): _input_queue.put('enter')
                     elif len(buffer) == 1:
-                        try:
-                            _input_queue.put(buffer.decode('utf-8').lower())
+                        try: _input_queue.put(buffer.decode('utf-8').lower())
                         except: pass
                     buffer = b''
-                # Мікропауза 10мс, щоб потік не навантажував процесор на 100%
                 time.sleep(0.01)
 
-    def _start_listening():
+    def start_listening():
         global _initialized, _old_settings, _old_flags
         if _initialized: return
         
@@ -79,19 +77,14 @@ except ImportError:
         _old_settings = termios.tcgetattr(fd)
         _old_flags = fcntl.fcntl(fd, fcntl.F_GETFL)
         
-        # Переводимо термінал у постійний сирий режим
         tty.setraw(fd)
-        # Робимо читання неблокуючим на рівні ОС
         fcntl.fcntl(fd, fcntl.F_SETFL, _old_flags | os.O_NONBLOCK)
-        
         _initialized = True
         
-        # Запускаємо демон-потік для збору кліків
         t = threading.Thread(target=_background_listener, args=(fd,), daemon=True)
         t.start()
 
-    def _stop_listening():
-        """Повертає термінал macOS до тями."""
+    def stop_listening():
         global _initialized, _old_settings, _old_flags
         if not _initialized: return
         _initialized = False
@@ -102,16 +95,14 @@ except ImportError:
         if _old_flags:
             fcntl.fcntl(fd, fcntl.F_SETFL, _old_flags)
 
-    # Автоматично викликати відновлення терміналу при будь-якому виході з Python
-    atexit.register(_stop_listening)
+    atexit.register(stop_listening)
 
     def get_input():
         global _initialized
         if not _initialized:
-            _start_listening()
+            start_listening()
             
         res = None
-        # Забираємо найсвіжішу клавішу з нашого фонового буфера
         while not _input_queue.empty():
             item = _input_queue.get_nowait()
             if item == 'ctrl_c':
