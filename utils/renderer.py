@@ -16,19 +16,24 @@ class Renderer:
         self.first_render = True
 
     def _render_frame(self, frame_lines):
+        import time
+        
         if self.first_render:
             self.clear()
             self.first_render = False
         
-        # \033[?25l - ховаємо курсор
-        # \033[H - повертаємо невидимий курсор у верхній лівий кут (колонку 0, рядок 0)
         sys.stdout.write('\033[?25l\033[H')
-        
-        # ВАЖЛИВИЙ ФІКС: міняємо "\n" на "\r\n" для усунення ефекту сходинок у сирому режимі UNIX
         output = "\r\n".join([line + "\033[K" for line in frame_lines])
         
-        sys.stdout.write(output + "\033[J")
-        sys.stdout.flush()
+        # Залізобетонний вивід: якщо ОС каже, що буфер повний,
+        # ми робимо мікропаузу і повторюємо спробу замість крашу програми
+        while True:
+            try:
+                sys.stdout.write(output + "\033[J")
+                sys.stdout.flush()
+                break
+            except BlockingIOError:
+                time.sleep(0.005) # Чекаємо 5мс, поки термінал звільнить буфер
 
     # ===============================
     # ВІДМАЛЬОВКА ГРИ
