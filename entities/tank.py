@@ -15,7 +15,6 @@ class Tank:
         return offsets.get(direction, (0, 0))
 
     def save_history(self):
-        """Зберігає позицію перед новим тіком для коректної реєстрації колізій."""
         self.last_x = self.x
         self.last_y = self.y
 

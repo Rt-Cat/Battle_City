@@ -20,14 +20,13 @@ class Game:
         self.message = ""
 
     def run(self):
-        # Щоб не було залипань клавіш при переході з меню
         get_input() 
         while self.running:
             self.update()
             self.renderer.render_game(self.game_map, self.player, self.enemies, self.bullets, self.explosions, self.message)
             time.sleep(c.FPS)
             if self.message and not self.running:
-                time.sleep(2) # Пауза перед виходом у меню при перемозі/поразці
+                time.sleep(2) 
 
     def update(self):
         self._sync_history()
@@ -42,7 +41,6 @@ class Game:
     # ==========================================
     
     def _sync_history(self):
-        """Оновлює попередні координати танків для перевірки колізій-привидів."""
         all_tanks = [self.player] + self.enemies
         for t in all_tanks:
             t.save_history()
@@ -85,7 +83,6 @@ class Game:
 
             b.move()
             
-            # Перевірка всіх можливих колізій снаряду
             if self._check_out_of_bounds(b): continue
             if self._check_wall_collision(b): continue
             if self._check_bullet_collision(b): continue
@@ -115,7 +112,6 @@ class Game:
         return False
 
     def _check_bullet_collision(self, b):
-        """Перевірка зіткнення зустрічних снарядів."""
         for ob in self.bullets[:]:
             if b != ob and b.is_player != ob.is_player and ob in self.bullets:
                 if b.x == ob.x and b.y == ob.y:
@@ -126,7 +122,6 @@ class Game:
         return False
 
     def _check_tank_collision(self, b):
-        """Перевірка влучання у танки (Пряме та Перехресне)."""
         def is_hit(bullet, tank):
             if bullet.x == tank.x and bullet.y == tank.y:
                 return True
@@ -135,7 +130,6 @@ class Game:
                 return True
             return False
 
-        # Вороги (Friendly fire увімкнено)
         for e in self.enemies[:]:
             if is_hit(b, e):
                 self.enemies.remove(e)
@@ -143,7 +137,6 @@ class Game:
                 self.bullets.remove(b)
                 return True
 
-        # Гравець
         if not b.is_player and is_hit(b, self.player):
             self.player.is_alive = False
             self.explosions.append({'x': self.player.x, 'y': self.player.y, 'timer': 5})

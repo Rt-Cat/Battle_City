@@ -45,8 +45,6 @@ except ImportError:
         fd = sys.stdin.fileno()
         _old_settings = termios.tcgetattr(fd)
         
-        # tty.setcbreak ідеальний для macOS: він прибирає буферизацію рядків,
-        # але залишає stdout повністю робочим і не блокує екран
         tty.setcbreak(fd)
         _initialized = True
 
@@ -58,7 +56,6 @@ except ImportError:
         if _old_settings:
             termios.tcsetattr(fd, termios.TCSADRAIN, _old_settings)
 
-    # Гарантоване відновлення терміналу при закритті програми
     atexit.register(stop_listening)
 
     def get_input():
@@ -69,17 +66,14 @@ except ImportError:
         fd = sys.stdin.fileno()
         res = None
 
-        # Вичитуємо абсолютно всі натиснуті клавіші з буфера за цей тік (запобігає лагам)
         while True:
-            # Перевіряємо наявність символу з таймаутом 0 (миттєвий неблокуючий запит)
             r, _, _ = select.select([fd], [], [], 0)
             if not r:
-                break  # Клавіш у буфері більше немає
+                break  
             
             ch = os.read(fd, 1)
             
-            if ch == b'\x1b':  # Початок керуючої послідовності (Стрілочки)
-                # Робимо мікроскопічну перевірку на наступні байти
+            if ch == b'\x1b':  
                 r2, _, _ = select.select([fd], [], [], 0.03)
                 if r2 and os.read(fd, 1) == b'[':
                     r3, _, _ = select.select([fd], [], [], 0.03)

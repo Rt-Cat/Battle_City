@@ -32,10 +32,8 @@ class MapEditor:
             self.cursor_y = self.height // 2
 
     def _prompt_setup(self):
-        # Вимикаємо сирий режим для безпечного введення тексту через стандартний input()
         stop_listening()
         
-        # Повертаємо видимість системного курсора на час введення букв
         sys.stdout.write('\033[?25h')
         sys.stdout.flush()
         
@@ -46,7 +44,6 @@ class MapEditor:
         existing_levels = MapManager.get_all_levels()
         existing_names = [level['name'].lower() for level in existing_levels]
         
-        # 1. Запит імені карти
         while True:
             name_input = input("Введіть назву карти: ").strip()
             if name_input.lower() == 'q':
@@ -60,7 +57,6 @@ class MapEditor:
             else:
                 break
         
-        # 2. Запит розмірів карти
         try:
             w_input = input("Ширина (макс 40): ").strip()
             if w_input.lower() == 'q':
@@ -79,20 +75,17 @@ class MapEditor:
             self.height = max(5, min(40, h))
             
         except ValueError:
-            # Якщо ввели не число і не 'q' — ставимо стандартний безпечний розмір
             self.width, self.height = 20, 15
             
         self.grid = [[' ' for _ in range(self.width)] for _ in range(self.height)]
         
-        # Повертаємо ігровий сирий режим назад
         start_listening()
 
     def run(self):
-        # Якщо користувач скасував створення карти на етапі prompt_setup
         if not self.valid:
             return
             
-        get_input()  # Очистка буфера клавіатури перед стартом
+        get_input()  
         while self.running:
             self.renderer.render_editor(self.grid, self.cursor_x, self.cursor_y, self.name)
             key = get_input()
@@ -121,11 +114,9 @@ class MapEditor:
             time.sleep(0.05)
 
     def _handle_quit_prompt(self):
-        """Нове інтерактивне меню закриття, яке реагує на поодинокі клавіші миттєво."""
-        get_input() # Очищаємо хвіст натискань
+        get_input() 
         
         while True:
-            # Збираємо кадр за допомогою системи захисту від мерехтіння
             frame = []
             frame.append("=== ВИХІД З РЕДАКТОРА ===")
             frame.append("")
@@ -152,8 +143,6 @@ class MapEditor:
                 
             time.sleep(0.05)
             
-        # Якщо користувач обрав повернутися ('q'), моментально перемальовуємо редактор,
-        # щоб не залишалося візуальних слідів меню виходу
         if self.running:
             self.renderer.render_editor(self.grid, self.cursor_x, self.cursor_y, self.name)
 

@@ -25,8 +25,6 @@ class Renderer:
         sys.stdout.write('\033[?25l\033[H')
         output = "\r\n".join([line + "\033[K" for line in frame_lines])
         
-        # Залізобетонний вивід: якщо ОС каже, що буфер повний,
-        # ми робимо мікропаузу і повторюємо спробу замість крашу програми
         while True:
             try:
                 sys.stdout.write(output + "\033[J")
